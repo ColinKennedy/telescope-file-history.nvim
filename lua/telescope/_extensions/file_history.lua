@@ -10,6 +10,17 @@ local fh_actions = require("file_history.actions")
 
 local fh = require('file_history')
 
+local function get_next_entry(status)
+  local current = status.picker._selection_entry.index
+  current = current + 1
+
+  if current < 1 then
+    return nil
+  end
+
+  return status.picker.finder.results[current]
+end
+
 local function split(str, sep)
   local result = {}
   for field in string.gmatch(str, ("[^%s]+"):format(sep)) do
@@ -19,16 +30,43 @@ local function split(str, sep)
 end
 
 local preview_file_history = function(opts, bufnr)
+  local function get_diff_by_commits(entry, status)
+    local next = get_next_entry(status)
+
+    if next == nil then
+
+      return nil
+    end
+
+    local next_lines = fh.get_file(next.fields.file, next.fields.hash)
+    local entry_lines = fh.get_file(entry.fields.file, entry.fields.hash)
+
+    return vim.diff(table.concat(next_lines, '\n'), table.concat(entry_lines, '\n'),
+    { result_type = 'unified', ctxlen = 3 })
+  end
+
+  local function get_cumulative_diff(entry)
+    local buffer_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, true)
+    local parent_lines = fh.get_file(entry.fields.file, entry.fields.hash)
+
+    return vim.diff(table.concat(buffer_lines, '\n'), table.concat(parent_lines, '\n'),
+    { result_type = 'unified', ctxlen = 3 })
+  end
+
   return previewers.new_buffer_previewer({
     title = "File History",
     get_buffer_by_name = function(_, entry)
       return entry.value
     end,
     define_preview = function(self, entry, status)
-      local buffer_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, true)
-      local parent_lines = fh.get_file(entry.fields.file, entry.fields.hash)
-      local diff = vim.diff(table.concat(buffer_lines, '\n'), table.concat(parent_lines, '\n'),
-      { result_type = 'unified', ctxlen = 3 })
+      local diff = nil
+
+      if opts.show_diffs_by_commit then
+        diff = get_diff_by_commits(entry, status) or "<Initial commit>"
+      else
+        diff = get_cumulative_diff(entry)
+      end
+
       vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, true, split(diff, '\n'))
       putils.regex_highlighter(self.state.bufnr, "diff")
     end,
@@ -139,6 +177,12 @@ local function file_history(opts)
   }):find()
 end
 
+local function file_history2(opts)
+  opts.show_diffs_by_commit = true
+
+  return file_history(opts)
+end
+
 local function file_history_files(opts)
   opts = opts or {}
   local results = fh.file_history_files(opts)
@@ -241,6 +285,7 @@ vim.api.nvim_set_hl(0, 'TelescopeFileHistoryTag', { link = 'Comment' })
 return require("telescope").register_extension({
   exports = {
     history = file_history,
+    history2 = file_history2,
     files = file_history_files,
     query = file_history_query,
     backup = file_history_backup
