@@ -68,7 +68,14 @@ local preview_file_history = function(opts, bufnr)
       end
 
       vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, true, split(diff, '\n'))
-      putils.regex_highlighter(self.state.bufnr, "diff")
+
+      local parser = "diff"
+
+      if vim.tbl_contains(require("nvim-treesitter.info").installed_parsers(), parser) then
+        vim.treesitter.start(self.state.bufnr, parser)
+      else
+        putils.regex_highlighter(self.state.bufnr, "diff")
+      end
     end,
   })
 end
