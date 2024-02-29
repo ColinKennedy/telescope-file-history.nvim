@@ -6,6 +6,27 @@ local function make_dir(directory)
   end
 end
 
+--- Add `path` to each git log entry in `stdout`.
+---
+--- @param array<string[]>
+---     Nested lines from a `git log --format=...` command to append onto.
+--- @path string
+---     The absolute path to a file on-disk to add to each of the nested lines.
+---
+local function append_text_per_entry(stdout, path)
+  for index, lines in ipairs(stdout) do
+    local formatted = {}
+
+    for _, line in ipairs(lines) do
+      if line ~= "" then
+        table.insert(formatted, line .. path)
+      end
+    end
+
+    stdout[index] = formatted
+  end
+end
+
 local function array_append(array, extra)
   for _, v in ipairs(extra) do
     table.insert(array, v)
@@ -132,8 +153,13 @@ local FileHistory = {
 
   file_history = function (self, dirname, filename)
     -- List all the revisions of a file in the .git repository
-    local backuppath = self.basedir .. self.hostname .. dirname .. "/" .. filename
-    return self:_git_command({ 'log', '--format=%ar%x09%ad%x09%H%x09%s', "--", backuppath })
+    local realpath = dirname .. "/" .. filename
+    local backuppath = self.basedir .. self.hostname .. realpath
+    local result = self:_git_command({ 'log', '--format=%ar%x09%ad%x09%H%x09', "--", backuppath })
+
+    append_text_per_entry(result.stdout, realpath)
+
+    return result
   end,
 
   list_files = function (self)
